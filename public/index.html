@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DrillBox 刷题</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">DrillBox</div>
+      <div class="pill" id="statsPill">—</div>
+    </header>
+
+    <section class="card" id="loginCard">
+      <h2>登录</h2>
+      <p class="muted">输入口令开始刷题（你自己在服务器 .env 里设置）。</p>
+      <div class="row">
+        <input id="passcode" type="password" placeholder="口令" />
+        <button id="btnLogin" class="btn primary">进入</button>
+      </div>
+      <p class="muted small">提示：这是简化版登录，适合个人/小范围使用。</p>
+    </section>
+
+    <section class="card hidden" id="mainCard">
+      <div class="controls">
+        <select id="mode">
+          <option value="random">随机刷</option>
+          <option value="seq">顺序刷</option>
+          <option value="wrong">只刷错题</option>
+          <option value="starred">只刷⭐易错</option>
+        </select>
+        <select id="type"></select>
+        <select id="section"></select>
+      </div>
+
+      <div class="qmeta" id="qmeta"></div>
+      <div class="stem" id="stem">—</div>
+
+      <div id="optionsBox" class="options hidden"></div>
+
+      <div id="inputBox" class="inputbox hidden">
+        <textarea id="answerText" rows="3" placeholder="输入答案（填空/简答）"></textarea>
+      </div>
+
+      <div class="actions">
+        <button id="btnStar" class="btn">⭐ 易错</button>
+        <button id="btnShow" class="btn">显示答案</button>
+        <button id="btnSubmit" class="btn primary">提交</button>
+        <button id="btnNext" class="btn ghost">下一题</button>
+      </div>
+
+      <div class="feedback hidden" id="feedback"></div>
+    </section>
+
+    <footer class="foot muted small">
+      本地手机优先刷题器 · Fastify + SQLite
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
