@@ -9,6 +9,67 @@ DrillBox 是一个轻量、可自部署的刷题网站，适合记忆型题库�
 > 资源占用低，1C / 1G RAM 的 VPS 即可运行。
 
 ---
+## 一键安装 DrillBox（Ubuntu，无 nginx）
+
+这会自动：
+✔ 安装 Node.js 20 LTS
+✔ 克隆/更新代码
+✔ 生成 .env
+✔ 初始化数据库
+✔ 创建 systemd 服务并启动
+
+> 说明：脚本会安装 Node.js 20、克隆代码、生成 `.env`、初始化数据库、创建 systemd 服务并启动。
+> 默认安装目录 `/var/www/drillbox`，默认端口 `16666`。
+
+```
+curl -fsSL https://raw.githubusercontent.com/dalaohuuu/drillbox/main/install_drillbox.sh | sudo bash
+
+
+```
+### 📌 自定义安装参数
+```
+curl -fsSL https://raw.githubusercontent.com/dalaohuuu/drillbox/main/install_drillbox.sh | sudo \
+  REPO_URL="https://github.com/dalaohuuu/drillbox.git" \
+  PORT="16666" \
+  APP_PASSCODE="DrillBox2025!" \
+  INSTALL_DIR="/var/www/drillbox" \
+  bash
+
+```
+| 参数             | 作用          |
+| -------------- | ----------- |
+| `REPO_URL`     | 仓库地址        |
+| `PORT`         | Node 后端监听端口 |
+| `APP_PASSCODE` | 登录口令        |
+| `INSTALL_DIR`  | 安装目录        |
+
+### 📍 安装后检查
+- 看服务状态
+systemctl status drillbox --no-pager
+
+- 查看日志
+journalctl -u drillbox -n 100 --no-pager
+
+- 测试后端是否可达
+curl -I http://127.0.0.1:16666/
+提示：
+
+若你用 nginx 做反代，确保 nginx 配置里的 proxy_pass 和 PORT 一致
+
+若你用了 HTTPS，检查证书是否正确
+
+## 🔄 后续更新代码只需要
+```
+cd /var/www/drillbox
+sudo git pull
+sudo npm install
+sudo systemctl restart drillbox
+```
+或者用脚本（如果你也添加了 scripts/update.sh）：
+```
+sudo bash scripts/update.sh
+```
+
 
 ## ✨ 功能特点
 
