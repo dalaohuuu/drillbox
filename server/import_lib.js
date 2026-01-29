@@ -1,4 +1,3 @@
-cat > /var/www/drillbox/server/import_lib.js <<'EOF'
 import { parseCsv, safeJsonParse } from "./utils.js";
 
 /**
@@ -81,4 +80,3 @@ export function importQuestionsFromCsvText(db, csvText, { defaultSection = "å¯¼å
 
   return { inserted, skipped, failed, errors: errors.slice(0, 20) };
 }
-EOF
