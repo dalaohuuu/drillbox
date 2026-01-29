@@ -60,9 +60,9 @@ curl -I http://127.0.0.1:16666/
 
 ## 🔄 后续更新代码只需要
 ```
-cd /var/www/drillbox
-sudo git pull
-sudo npm install
+cd /var/www/drillbox && \
+sudo git pull && \
+sudo npm install && \
 sudo systemctl restart drillbox
 ```
 或者用脚本（如果你也添加了 scripts/update.sh）：
