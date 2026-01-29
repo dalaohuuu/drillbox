@@ -13,16 +13,18 @@
       <div class="pill" id="statsPill">—</div>
     </header>
 
+    <!-- 登录 -->
     <section class="card" id="loginCard">
       <h2>登录</h2>
-      <p class="muted">输入口令开始刷题（你自己在服务器 .env 里设置）。</p>
+      <p class="muted">输入口令开始刷题（在服务器 .env 里设置 APP_PASSCODE）。</p>
       <div class="row">
         <input id="passcode" type="password" placeholder="口令" />
         <button id="btnLogin" class="btn primary">进入</button>
       </div>
-      <p class="muted small">提示：这是简化版登录，适合个人/小范围使用。</p>
+      <p class="muted small">提示：这是简化口令登录，适合个人/小范围使用。</p>
     </section>
 
+    <!-- 刷题主界面 -->
     <section class="card hidden" id="mainCard">
       <div class="controls">
         <select id="mode">
@@ -38,24 +40,36 @@
       <div class="qmeta" id="qmeta"></div>
       <div class="stem" id="stem">—</div>
 
+      <!-- 选择题/判断题选项区 -->
       <div id="optionsBox" class="options hidden"></div>
 
+      <!-- 填空/文字题输入区（可选输入，也可以直接看答案背题） -->
       <div id="inputBox" class="inputbox hidden">
-        <textarea id="answerText" rows="3" placeholder="输入答案（填空/简答）"></textarea>
+        <textarea id="answerText" rows="3" placeholder="输入答案（填空/文字题，可不填直接查看答案）"></textarea>
       </div>
 
       <div class="actions">
         <button id="btnStar" class="btn">⭐ 易错</button>
-        <button id="btnShow" class="btn">显示答案</button>
+        <button id="btnShow" class="btn">查看答案</button>
         <button id="btnSubmit" class="btn primary">提交</button>
         <button id="btnNext" class="btn ghost">下一题</button>
       </div>
 
+      <!-- 轻提示（toast） -->
       <div class="feedback hidden" id="feedback"></div>
+
+      <!-- ✅ 页面内答案区：点击“查看答案”或作答后自动展开 -->
+      <div class="answerBox hidden" id="answerBox">
+        <div class="label">参考答案</div>
+        <div class="text" id="answerTextView">—</div>
+
+        <div class="label" style="margin-top:10px;">解析</div>
+        <div class="text" id="analysisTextView">—</div>
+      </div>
     </section>
 
     <footer class="foot muted small">
-      本地手机优先刷题器 · Fastify + SQLite
+      手机优先刷题器 · Fastify + SQLite
     </footer>
   </div>
 
