@@ -38,7 +38,6 @@ function clearOptionStates() {
 
 function showAnswerPanel() {
   if (!current) return;
-  // 如果你还没在 index.html 加 answerBox，这里会自动降级为 alert
   const answerBox = $("answerBox");
   const atv = $("answerTextView");
   const itv = $("analysisTextView");
@@ -51,7 +50,6 @@ function showAnswerPanel() {
     itv.textContent = analysisText;
     setHidden(answerBox, false);
   } else {
-    // fallback
     alert(`参考答案：${answerText}\n\n解析：${analysisText}`);
   }
 }
@@ -59,6 +57,35 @@ function showAnswerPanel() {
 function hideAnswerPanel() {
   const answerBox = $("answerBox");
   if (answerBox) setHidden(answerBox, true);
+}
+
+// 多空：识别题干中连续下划线（___ / ____）
+function countBlanksInStem(stem) {
+  const m = String(stem || "").match(/_{3,}/g);
+  return m ? m.length : 0;
+}
+
+function renderBlankInputs(n) {
+  const box = $("blankInputs");
+  if (!box) return;
+  box.innerHTML = "";
+  for (let i = 0; i < n; i++) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = `第 ${i + 1} 空`;
+    input.className = "blank";
+    box.appendChild(input);
+  }
+}
+
+function collectBlankInputs() {
+  const box = $("blankInputs");
+  if (!box) return "";
+  const vals = [...box.querySelectorAll("input.blank")]
+    .map((i) => (i.value || "").trim())
+    .filter((v) => v.length > 0);
+  // 按顺序用 “；” 拼接
+  return vals.join("；");
 }
 
 async function refreshStats() {
@@ -101,14 +128,22 @@ function renderQuestion(q) {
 
   const optionsBox = $("optionsBox");
   const inputBox = $("inputBox");
+  const blankInputs = $("blankInputs");
+  const textarea = $("answerText");
 
   if (optionsBox) optionsBox.innerHTML = "";
   setHidden(optionsBox, true);
   setHidden(inputBox, true);
 
+  // 默认：隐藏多空输入容器
+  if (blankInputs) {
+    blankInputs.innerHTML = "";
+    setHidden(blankInputs, true);
+  }
+  if (textarea) setHidden(textarea, false);
+
   // --- by type ---
   if (q.type === "判断") {
-    // 两行：1.对 / 2.错
     setHidden(optionsBox, false);
 
     const makeBtn = (label, value) => {
@@ -139,14 +174,12 @@ function renderQuestion(q) {
       btn.textContent = opt;
 
       if (q.type === "单选") {
-        // 单选：点击即提交
         btn.onclick = async () => {
           clearOptionStates();
           btn.classList.add("picked");
           await submitAndReveal(btn.dataset.value);
         };
       } else {
-        // 多选：先勾选，再点“提交”
         btn.onclick = () => {
           btn.classList.toggle("picked");
         };
@@ -158,8 +191,22 @@ function renderQuestion(q) {
     return;
   }
 
-  // 默认：填空/文字题
+  // 填空/文字题
   setHidden(inputBox, false);
+
+  // 如果识别到多空（>=2），渲染多个输入框并隐藏 textarea
+  const blanks = countBlanksInStem(q.stem);
+  if (q.type === "填空" && blanks >= 2) {
+    renderBlankInputs(blanks);
+    setHidden(blankInputs, false);
+    if (textarea) setHidden(textarea, true);
+  } else if (q.type === "填空") {
+    // 单空：给一个更合适的体验：仍用 textarea 也行，这里保留 textarea（简洁）
+    if (textarea) textarea.placeholder = "输入答案（填空题，支持用“；”分隔多空）";
+  } else {
+    // 其他文字题
+    if (textarea) textarea.placeholder = "输入答案（文字题/简答，可不填直接查看答案）";
+  }
 }
 
 function collectAnswer() {
@@ -183,6 +230,12 @@ function collectAnswer() {
     return picked ? picked.dataset.value : "";
   }
 
+  // 填空：如果多空输入容器显示，则按输入框收集
+  const blankInputs = $("blankInputs");
+  if (q.type === "填空" && blankInputs && !blankInputs.classList.contains("hidden")) {
+    return collectBlankInputs();
+  }
+
   return ($("answerText")?.value || "").trim();
 }
 
@@ -190,7 +243,6 @@ function revealCorrectness(userAnswerText) {
   const q = current;
   if (!q) return;
 
-  // 没有标准答案：不高亮，只展示答案区（会显示“无标准答案，可自评”）
   if (!q.hasAnswer) return;
 
   const box = $("optionsBox");
@@ -198,7 +250,6 @@ function revealCorrectness(userAnswerText) {
 
   const pickedButtons = [...box.querySelectorAll(".opt.picked")];
 
-  // 判断题：answer 为 true/false（字符串或布尔）
   if (q.type === "判断") {
     const ans = String(q.answer).trim().toLowerCase();
     const correctIsTrue = ans === "true" || ans === "对" || ans === "正确" || ans === "1";
@@ -223,11 +274,9 @@ function revealCorrectness(userAnswerText) {
         b.appendChild(tag);
       }
     });
-
     return;
   }
 
-  // 单选/多选：answer 形如 "B" 或 "A,C,D"
   if (q.type === "单选" || q.type === "多选") {
     const correctSet = new Set(
       String(q.answer)
@@ -257,11 +306,10 @@ function revealCorrectness(userAnswerText) {
         b.appendChild(tag);
       }
     });
-
     return;
   }
 
-  // 填空/文字题：没有选项区高亮
+  // 填空/文字题：不做选项高亮
 }
 
 async function submitAndReveal(answerTextOverride = null) {
@@ -278,13 +326,12 @@ async function submitAndReveal(answerTextOverride = null) {
     body: JSON.stringify({
       questionId: current.id,
       answerText,
-      mode: $("mode")?.value || "normal"
-    })
+      mode: $("mode")?.value || "normal",
+    }),
   });
 
   if (!res.ok) return;
 
-  // 回答后：显示正确答案（高亮/标记）+ 展示答案区（含解析）
   revealCorrectness(answerText);
   showAnswerPanel();
   await refreshStats();
@@ -293,20 +340,17 @@ async function submitAndReveal(answerTextOverride = null) {
 async function submitAttempt() {
   if (!current) return;
 
-  // 单选/判断：已经点击即提交，这里主要给 多选 + 填空/文字题
   const answerText = collectAnswer();
   if (!answerText) {
     toast("先选/填一个答案吧");
     return;
   }
 
-  // 有标准答案：直接提交并 reveal
   if (current.hasAnswer) {
     await submitAndReveal(answerText);
     return;
   }
 
-  // 无标准答案：自评
   const yes = confirm("这题无标准答案：你觉得自己答对了吗？\n确定=对；取消=错");
   await api("/api/attempts", {
     method: "POST",
@@ -314,8 +358,8 @@ async function submitAttempt() {
       questionId: current.id,
       answerText,
       selfCorrect: yes,
-      mode: $("mode")?.value || "normal"
-    })
+      mode: $("mode")?.value || "normal",
+    }),
   });
 
   toast(yes ? "已记录：✅对" : "已记录：❌错（进入错题本）");
@@ -346,8 +390,6 @@ async function nextQuestion() {
 }
 
 function showAnswer() {
-  // 填空/文字题：点按钮显示答案（不算作答）
-  // 判断/选择题：你也可以允许点查看答案（不影响）
   showAnswerPanel();
 }
 
@@ -361,18 +403,24 @@ async function toggleStar() {
     body: JSON.stringify({
       questionId: current.id,
       markType: "starred",
-      enabled: starred
-    })
+      enabled: starred,
+    }),
   });
 
   await refreshStats();
+}
+
+function setLoggedInUI(isLoggedIn) {
+  setHidden($("loginCard"), isLoggedIn);
+  setHidden($("mainCard"), !isLoggedIn);
+  setHidden($("btnLogout"), !isLoggedIn);
 }
 
 async function doLogin() {
   const passcode = ($("passcode")?.value || "").trim();
   const res = await api("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ passcode })
+    body: JSON.stringify({ passcode }),
   });
 
   if (!res.ok) {
@@ -383,16 +431,35 @@ async function doLogin() {
   token = res.token;
   localStorage.setItem("drill_token", token);
 
-  setHidden($("loginCard"), true);
-  setHidden($("mainCard"), false);
+  setLoggedInUI(true);
 
   await loadMeta();
   await refreshStats();
   await nextQuestion();
 }
 
+async function doLogout() {
+  // 尝试通知后端删除 session（失败也无所谓）
+  try {
+    await api("/api/auth/logout", { method: "POST" });
+  } catch {}
+
+  token = "";
+  localStorage.removeItem("drill_token");
+
+  // 清理 UI
+  $("statsPill").textContent = "—";
+  if ($("passcode")) $("passcode").value = "";
+  hideAnswerPanel();
+  setHidden($("feedback"), true);
+
+  setLoggedInUI(false);
+}
+
 // bind
 if ($("btnLogin")) $("btnLogin").onclick = doLogin;
+if ($("btnLogout")) $("btnLogout").onclick = doLogout;
+
 if ($("btnNext")) $("btnNext").onclick = nextQuestion;
 if ($("btnSubmit")) $("btnSubmit").onclick = submitAttempt;
 if ($("btnShow")) $("btnShow").onclick = showAnswer;
@@ -401,18 +468,22 @@ if ($("mode")) $("mode").onchange = nextQuestion;
 if ($("type")) $("type").onchange = nextQuestion;
 if ($("section")) $("section").onchange = nextQuestion;
 
-// auto-login if token exists (session still valid)
+// auto-login if token exists
 (async function boot() {
-  if (!token) return;
+  if (!token) {
+    setLoggedInUI(false);
+    return;
+  }
+
   const res = await api("/api/meta");
   if (res.ok) {
-    setHidden($("loginCard"), true);
-    setHidden($("mainCard"), false);
+    setLoggedInUI(true);
     await loadMeta();
     await refreshStats();
     await nextQuestion();
   } else {
     localStorage.removeItem("drill_token");
     token = "";
+    setLoggedInUI(false);
   }
 })();

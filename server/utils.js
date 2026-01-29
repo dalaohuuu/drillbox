@@ -39,21 +39,39 @@ export function parseCsv(text) {
       }
     }
     row.push(cur);
-    rows.push(row.map(v => v.trim()));
+    rows.push(row.map((v) => v.trim()));
   }
   return rows;
+}
+
+function normText(s) {
+  return String(s ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function splitBlanks(s) {
+  // 支持：； ; ， , | / 空格（多空填空题）
+  const raw = String(s ?? "").trim();
+  if (!raw) return [];
+  return raw
+    .split(/[；;，,|/]+|\s{2,}/g)
+    .map((x) => normText(x))
+    .filter(Boolean);
 }
 
 // 判分：
 // - 判断题：answer = true/false 或 "对/错"
 // - 单选：answer = "A" 或 "B"
-// - 多选：answer = "A,B" 之类（忽略顺序）
-// - 填空：默认严格匹配；你也可以后续扩展模糊匹配
+// - 多选：answer = "A,B"（忽略顺序）
+// - 填空：支持多空，用分隔符拆分，逐空对比（顺序一致）
+// - 文字题：默认严格对比（可后续扩展）
 export function grade(type, userAnswer, correctAnswer) {
-  const u = (userAnswer ?? "").trim();
-  const c = (correctAnswer ?? "").trim();
+  const uRaw = String(userAnswer ?? "").trim();
+  const cRaw = String(correctAnswer ?? "").trim();
 
-  if (!c) return null; // 无标准答案：自评模式
+  if (!cRaw) return null; // 无标准答案：自评模式
 
   if (type === "判断") {
     const toBool = (x) => {
@@ -62,26 +80,44 @@ export function grade(type, userAnswer, correctAnswer) {
       if (s === "false" || s === "错" || s === "错误" || s === "f" || s === "0") return false;
       return null;
     };
-    const ub = toBool(u);
-    const cb = toBool(c);
+    const ub = toBool(uRaw);
+    const cb = toBool(cRaw);
     if (ub === null || cb === null) return null;
     return ub === cb;
   }
 
   if (type === "单选") {
-    return u.toUpperCase() === c.toUpperCase();
+    return uRaw.toUpperCase() === cRaw.toUpperCase();
   }
 
   if (type === "多选") {
     const norm = (s) =>
-      s.toUpperCase()
+      String(s)
+        .toUpperCase()
         .split(/[,\s，；;]+/)
         .filter(Boolean)
         .sort()
         .join(",");
-    return norm(u) === norm(c);
+    return norm(uRaw) === norm(cRaw);
   }
 
-  // 填空/其他：严格相等（后续可升级为分隔符集合对比）
-  return u === c;
+  if (type === "填空") {
+    const uParts = splitBlanks(uRaw);
+    const cParts = splitBlanks(cRaw);
+
+    // 单空：允许用户直接输入，不一定写分隔符
+    if (cParts.length <= 1) {
+      return normText(uRaw) === normText(cRaw);
+    }
+
+    // 多空：逐空对比（顺序一致）
+    if (uParts.length !== cParts.length) return false;
+    for (let i = 0; i < cParts.length; i++) {
+      if (uParts[i] !== cParts[i]) return false;
+    }
+    return true;
+  }
+
+  // 其他题型：严格（忽略大小写与多空格）
+  return normText(uRaw) === normText(cRaw);
 }

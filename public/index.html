@@ -10,7 +10,11 @@
   <div class="wrap">
     <header class="top">
       <div class="brand">DrillBox</div>
-      <div class="pill" id="statsPill">—</div>
+
+      <div class="topRight">
+        <div class="pill" id="statsPill">—</div>
+        <button class="btn smallBtn hidden" id="btnLogout" type="button">退出</button>
+      </div>
     </header>
 
     <!-- 登录 -->
@@ -43,9 +47,17 @@
       <!-- 选择题/判断题选项区 -->
       <div id="optionsBox" class="options hidden"></div>
 
-      <!-- 填空/文字题输入区（可选输入，也可以直接看答案背题） -->
+      <!-- 填空/文字题输入区 -->
       <div id="inputBox" class="inputbox hidden">
+        <!-- 多空填空：动态生成多个 input -->
+        <div id="blankInputs" class="blankInputs hidden"></div>
+
+        <!-- 文字题/简答：保留 textarea -->
         <textarea id="answerText" rows="3" placeholder="输入答案（填空/文字题，可不填直接查看答案）"></textarea>
+
+        <div class="muted small tip">
+          多空填空题：每个空用一个输入框；提交时系统会按顺序判分。
+        </div>
       </div>
 
       <div class="actions">
@@ -55,10 +67,9 @@
         <button id="btnNext" class="btn ghost">下一题</button>
       </div>
 
-      <!-- 轻提示（toast） -->
       <div class="feedback hidden" id="feedback"></div>
 
-      <!-- ✅ 页面内答案区：点击“查看答案”或作答后自动展开 -->
+      <!-- 页面内答案区 -->
       <div class="answerBox hidden" id="answerBox">
         <div class="label">参考答案</div>
         <div class="text" id="answerTextView">—</div>

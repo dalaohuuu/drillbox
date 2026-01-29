@@ -4,7 +4,6 @@ dotenv.config();
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import path from "path";
-import fs from "fs";
 import { fileURLToPath } from "url";
 
 import { openDb } from "./db.js";
@@ -23,7 +22,7 @@ const db = openDb();
 // 静态站点
 app.register(fastifyStatic, {
   root: publicDir,
-  prefix: "/"
+  prefix: "/",
 });
 
 // --- Auth: 简单口令登录，返回 session token ---
@@ -33,33 +32,50 @@ app.post("/api/auth/login", async (req, reply) => {
     return reply.code(401).send({ ok: false, error: "Invalid passcode" });
   }
 
-  // 创建匿名 user + session（每次登录新用户也可以；你也可改为固定 user）
   const userId = newId("u");
   const token = newId("s");
 
   db.prepare("INSERT INTO users (id, created_at) VALUES (?, ?)").run(userId, nowIso());
-  db.prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)").run(token, userId, nowIso());
+  db.prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)").run(
+    token,
+    userId,
+    nowIso()
+  );
 
   return { ok: true, token };
 });
 
-function requireUser(req, reply) {
+function parseBearerToken(req) {
   const auth = req.headers["authorization"] || "";
   const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (!m) return reply.code(401).send({ ok: false, error: "Missing Bearer token" });
+  return m ? m[1] : "";
+}
 
-  const token = m[1];
+function requireUser(req, reply) {
+  const token = parseBearerToken(req);
+  if (!token) return reply.code(401).send({ ok: false, error: "Missing Bearer token" });
+
   const row = db.prepare("SELECT user_id FROM sessions WHERE token = ?").get(token);
   if (!row) return reply.code(401).send({ ok: false, error: "Invalid session" });
 
   req.userId = row.user_id;
+  req.sessionToken = token;
 }
+
+// 退出登录：删除 session
+app.post("/api/auth/logout", async (req, reply) => {
+  requireUser(req, reply);
+  db.prepare("DELETE FROM sessions WHERE token = ?").run(req.sessionToken);
+  return { ok: true };
+});
 
 // --- Meta：题型/章节列表 ---
 app.get("/api/meta", async (req, reply) => {
   requireUser(req, reply);
   const types = db.prepare("SELECT type, COUNT(*) as c FROM questions GROUP BY type ORDER BY c DESC").all();
-  const sections = db.prepare("SELECT section, COUNT(*) as c FROM questions GROUP BY section ORDER BY c DESC").all();
+  const sections = db
+    .prepare("SELECT section, COUNT(*) as c FROM questions GROUP BY section ORDER BY c DESC")
+    .all();
   return { ok: true, types, sections };
 });
 
@@ -74,8 +90,6 @@ app.get("/api/questions/next", async (req, reply) => {
   const type = req.query.type ? String(req.query.type) : null;
   const section = req.query.section ? String(req.query.section) : null;
 
-  // 为了顺序刷：按 questions.rowid 递增；用 last_seen 记录在 localStorage 更简单
-  // 这里先实现：random/ wrong/starred 为主，seq 简单按 rowid
   let where = "1=1";
   const params = [];
 
@@ -110,7 +124,6 @@ app.get("/api/questions/next", async (req, reply) => {
   if (!q) return { ok: true, question: null };
 
   const options = q.options_json ? safeJsonParse(q.options_json, []) : [];
-  // 返回时不隐藏 answer：因为填空自评需要显示；若你想“先不显示答案”，前端可控制
   return {
     ok: true,
     question: {
@@ -121,8 +134,8 @@ app.get("/api/questions/next", async (req, reply) => {
       options,
       hasAnswer: Boolean(q.answer),
       answer: q.answer || "",
-      analysis: q.analysis || ""
-    }
+      analysis: q.analysis || "",
+    },
   };
 });
 
@@ -139,29 +152,33 @@ app.post("/api/attempts", async (req, reply) => {
 
   let isCorrect = null;
 
-  // 如果有标准答案，自动判分；否则用 selfCorrect（自评）
   if (q.answer && q.answer.trim()) {
     const g = grade(q.type, answerText, q.answer);
-    isCorrect = g === null ? null : (g ? 1 : 0);
+    isCorrect = g === null ? null : g ? 1 : 0;
   } else if (selfCorrect === true || selfCorrect === false) {
     isCorrect = selfCorrect ? 1 : 0;
   }
 
-  // 写 attempt
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO attempts (id, user_id, question_id, answer_text, is_correct, mode, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(newId("a"), userId, questionId, String(answerText || ""), isCorrect, String(mode || "normal"), nowIso());
+  `
+  ).run(newId("a"), userId, questionId, String(answerText || ""), isCorrect, String(mode || "normal"), nowIso());
 
-  // 维护 wrong mark：答错就加入；答对就可选择移除（这里做：答对则移除 wrong）
+  // wrong mark：错了加入，答对移除
   if (isCorrect === 0) {
-    db.prepare(`
+    db.prepare(
+      `
       INSERT OR REPLACE INTO marks (user_id, question_id, mark_type, updated_at)
       VALUES (?, ?, 'wrong', ?)
-    `).run(userId, questionId, nowIso());
+    `
+    ).run(userId, questionId, nowIso());
   } else if (isCorrect === 1) {
-    db.prepare(`DELETE FROM marks WHERE user_id = ? AND question_id = ? AND mark_type = 'wrong'`)
-      .run(userId, questionId);
+    db.prepare(`DELETE FROM marks WHERE user_id = ? AND question_id = ? AND mark_type = 'wrong'`).run(
+      userId,
+      questionId
+    );
   }
 
   return { ok: true, isCorrect };
@@ -179,13 +196,14 @@ app.post("/api/marks", async (req, reply) => {
   if (!["starred", "wrong"].includes(mt)) return reply.code(400).send({ ok: false, error: "invalid markType" });
 
   if (enabled) {
-    db.prepare(`
+    db.prepare(
+      `
       INSERT OR REPLACE INTO marks (user_id, question_id, mark_type, updated_at)
       VALUES (?, ?, ?, ?)
-    `).run(userId, questionId, mt, nowIso());
+    `
+    ).run(userId, questionId, mt, nowIso());
   } else {
-    db.prepare(`DELETE FROM marks WHERE user_id = ? AND question_id = ? AND mark_type = ?`)
-      .run(userId, questionId, mt);
+    db.prepare(`DELETE FROM marks WHERE user_id = ? AND question_id = ? AND mark_type = ?`).run(userId, questionId, mt);
   }
 
   return { ok: true };
@@ -196,15 +214,19 @@ app.get("/api/stats", async (req, reply) => {
   requireUser(req, reply);
   const userId = req.userId;
 
-  const last = db.prepare(`
+  const last = db
+    .prepare(
+      `
     SELECT is_correct FROM attempts
     WHERE user_id = ?
     ORDER BY created_at DESC
     LIMIT 50
-  `).all(userId);
+  `
+    )
+    .all(userId);
 
   const done = last.length;
-  const correct = last.filter(r => r.is_correct === 1).length;
+  const correct = last.filter((r) => r.is_correct === 1).length;
   const wrongCount = db.prepare(`SELECT COUNT(*) as c FROM marks WHERE user_id = ? AND mark_type = 'wrong'`).get(userId).c;
   const starredCount = db.prepare(`SELECT COUNT(*) as c FROM marks WHERE user_id = ? AND mark_type = 'starred'`).get(userId).c;
 
