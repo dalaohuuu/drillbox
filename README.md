@@ -59,7 +59,15 @@ curl -I http://127.0.0.1:16666/
 若你用了 HTTPS，检查证书是否正确
 
 ## 🔄 后续更新代码只需要
+- 如果用root账户，先运行这个命令（告诉 Git：
+/var/www/drillbox 这个目录是我信任的，可以用 root 操作）：
 ```
+git config --global --add safe.directory /var/www/drillbox
+
+```
+- 非root用户直接用：
+```
+
 cd /var/www/drillbox && \
 sudo git pull && \
 sudo npm install && \
