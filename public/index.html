@@ -28,8 +28,25 @@
       <p class="muted small">提示：这是简化口令登录，适合个人/小范围使用。</p>
     </section>
 
-    <!-- 刷题主界面 -->
+    <!-- 主界面 -->
     <section class="card hidden" id="mainCard">
+
+      <!-- ✅ 新增：导入 CSV -->
+      <div class="importBox">
+        <div class="importTitle">导入题库（CSV）</div>
+        <div class="importRow">
+          <input id="csvFile" type="file" accept=".csv,text/csv" />
+          <button id="btnImport" class="btn">上传导入</button>
+        </div>
+        <div class="muted small">
+          CSV 表头必须包含：<code>id,type,section,stem,options,answer,analysis</code><br/>
+          选择题 options 需为 JSON 数组字符串，例如：<code>["A.xxx","B.yyy"]</code>
+        </div>
+        <div class="importResult hidden" id="importResult"></div>
+      </div>
+
+      <hr class="sep"/>
+
       <div class="controls">
         <select id="mode">
           <option value="random">随机刷</option>
@@ -44,20 +61,12 @@
       <div class="qmeta" id="qmeta"></div>
       <div class="stem" id="stem">—</div>
 
-      <!-- 选择题/判断题选项区 -->
       <div id="optionsBox" class="options hidden"></div>
 
-      <!-- 填空/文字题输入区 -->
       <div id="inputBox" class="inputbox hidden">
-        <!-- 多空填空：动态生成多个 input -->
         <div id="blankInputs" class="blankInputs hidden"></div>
-
-        <!-- 文字题/简答：保留 textarea -->
         <textarea id="answerText" rows="3" placeholder="输入答案（填空/文字题，可不填直接查看答案）"></textarea>
-
-        <div class="muted small tip">
-          多空填空题：每个空用一个输入框；提交时系统会按顺序判分。
-        </div>
+        <div class="muted small tip">多空填空题：每个空用一个输入框；提交时系统会按顺序判分。</div>
       </div>
 
       <div class="actions">
@@ -69,7 +78,6 @@
 
       <div class="feedback hidden" id="feedback"></div>
 
-      <!-- 页面内答案区 -->
       <div class="answerBox hidden" id="answerBox">
         <div class="label">参考答案</div>
         <div class="text" id="answerTextView">—</div>

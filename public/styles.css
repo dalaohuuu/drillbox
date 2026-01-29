@@ -214,8 +214,40 @@ input, textarea, select{
   gap:10px;
   margin-bottom:10px;
 }
-.tip{
+.tip{ margin-top:8px; }
+
+/* 导入区 */
+.importBox{
+  padding: 10px 0 2px 0;
+}
+.importTitle{
+  font-weight:700;
+  margin-bottom:8px;
+}
+.importRow{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  margin-bottom:8px;
+  flex-wrap:wrap;
+}
+.importRow input[type="file"]{
+  flex: 1 1 260px;
+  padding: 10px 12px;
+}
+.importResult{
   margin-top:8px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:#0f1118;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+.sep{
+  border:0;
+  border-top:1px solid var(--border);
+  margin: 12px 0;
 }
 
 .foot{

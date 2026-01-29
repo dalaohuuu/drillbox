@@ -7,10 +7,18 @@ let starred = false;
 function api(path, opts = {}) {
   const headers = opts.headers || {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (!headers["Content-Type"] && opts.method && opts.method !== "GET") {
+
+  // JSON 请求默认加 Content-Type（multipart 不加）
+  const isForm = opts.body instanceof FormData;
+  if (!isForm && !headers["Content-Type"] && opts.method && opts.method !== "GET") {
     headers["Content-Type"] = "application/json";
   }
-  return fetch(path, { ...opts, headers }).then((r) => r.json());
+
+  return fetch(path, { ...opts, headers }).then(async (r) => {
+    const ct = r.headers.get("content-type") || "";
+    const data = ct.includes("application/json") ? await r.json() : { ok: false, error: await r.text() };
+    return data;
+  });
 }
 
 function setHidden(el, yes) {
@@ -59,7 +67,6 @@ function hideAnswerPanel() {
   if (answerBox) setHidden(answerBox, true);
 }
 
-// 多空：识别题干中连续下划线（___ / ____）
 function countBlanksInStem(stem) {
   const m = String(stem || "").match(/_{3,}/g);
   return m ? m.length : 0;
@@ -84,7 +91,6 @@ function collectBlankInputs() {
   const vals = [...box.querySelectorAll("input.blank")]
     .map((i) => (i.value || "").trim())
     .filter((v) => v.length > 0);
-  // 按顺序用 “；” 拼接
   return vals.join("；");
 }
 
@@ -108,9 +114,7 @@ async function loadMeta() {
 
   secSel.innerHTML =
     `<option value="">全部章节</option>` +
-    res.sections
-      .map((s) => `<option value="${s.section}">${s.section || "(空)"} (${s.c})</option>`)
-      .join("");
+    res.sections.map((s) => `<option value="${s.section}">${s.section || "(空)"} (${s.c})</option>`).join("");
 }
 
 function renderQuestion(q) {
@@ -121,7 +125,6 @@ function renderQuestion(q) {
   $("qmeta").textContent = `${q.section || "未分组"} · ${q.type} · ${q.id}`;
   $("stem").textContent = q.stem;
 
-  // reset UI
   if ($("answerText")) $("answerText").value = "";
   hideAnswerPanel();
   setHidden($("feedback"), true);
@@ -135,14 +138,12 @@ function renderQuestion(q) {
   setHidden(optionsBox, true);
   setHidden(inputBox, true);
 
-  // 默认：隐藏多空输入容器
   if (blankInputs) {
     blankInputs.innerHTML = "";
     setHidden(blankInputs, true);
   }
   if (textarea) setHidden(textarea, false);
 
-  // --- by type ---
   if (q.type === "判断") {
     setHidden(optionsBox, false);
 
@@ -170,7 +171,7 @@ function renderQuestion(q) {
     q.options.forEach((opt, idx) => {
       const btn = document.createElement("button");
       btn.className = "opt";
-      btn.dataset.value = String.fromCharCode(65 + idx); // A/B/C...
+      btn.dataset.value = String.fromCharCode(65 + idx);
       btn.textContent = opt;
 
       if (q.type === "单选") {
@@ -184,7 +185,6 @@ function renderQuestion(q) {
           btn.classList.toggle("picked");
         };
       }
-
       optionsBox.appendChild(btn);
     });
 
@@ -194,17 +194,14 @@ function renderQuestion(q) {
   // 填空/文字题
   setHidden(inputBox, false);
 
-  // 如果识别到多空（>=2），渲染多个输入框并隐藏 textarea
   const blanks = countBlanksInStem(q.stem);
   if (q.type === "填空" && blanks >= 2) {
     renderBlankInputs(blanks);
     setHidden(blankInputs, false);
     if (textarea) setHidden(textarea, true);
   } else if (q.type === "填空") {
-    // 单空：给一个更合适的体验：仍用 textarea 也行，这里保留 textarea（简洁）
     if (textarea) textarea.placeholder = "输入答案（填空题，支持用“；”分隔多空）";
   } else {
-    // 其他文字题
     if (textarea) textarea.placeholder = "输入答案（文字题/简答，可不填直接查看答案）";
   }
 }
@@ -230,7 +227,6 @@ function collectAnswer() {
     return picked ? picked.dataset.value : "";
   }
 
-  // 填空：如果多空输入容器显示，则按输入框收集
   const blankInputs = $("blankInputs");
   if (q.type === "填空" && blankInputs && !blankInputs.classList.contains("hidden")) {
     return collectBlankInputs();
@@ -239,11 +235,9 @@ function collectAnswer() {
   return ($("answerText")?.value || "").trim();
 }
 
-function revealCorrectness(userAnswerText) {
+function revealCorrectness() {
   const q = current;
-  if (!q) return;
-
-  if (!q.hasAnswer) return;
+  if (!q || !q.hasAnswer) return;
 
   const box = $("optionsBox");
   if (!box) return;
@@ -306,10 +300,7 @@ function revealCorrectness(userAnswerText) {
         b.appendChild(tag);
       }
     });
-    return;
   }
-
-  // 填空/文字题：不做选项高亮
 }
 
 async function submitAndReveal(answerTextOverride = null) {
@@ -326,13 +317,13 @@ async function submitAndReveal(answerTextOverride = null) {
     body: JSON.stringify({
       questionId: current.id,
       answerText,
-      mode: $("mode")?.value || "normal",
-    }),
+      mode: $("mode")?.value || "normal"
+    })
   });
 
   if (!res.ok) return;
 
-  revealCorrectness(answerText);
+  revealCorrectness();
   showAnswerPanel();
   await refreshStats();
 }
@@ -358,8 +349,8 @@ async function submitAttempt() {
       questionId: current.id,
       answerText,
       selfCorrect: yes,
-      mode: $("mode")?.value || "normal",
-    }),
+      mode: $("mode")?.value || "normal"
+    })
   });
 
   toast(yes ? "已记录：✅对" : "已记录：❌错（进入错题本）");
@@ -389,10 +380,6 @@ async function nextQuestion() {
   await refreshStats();
 }
 
-function showAnswer() {
-  showAnswerPanel();
-}
-
 async function toggleStar() {
   if (!current) return;
   starred = !starred;
@@ -403,8 +390,8 @@ async function toggleStar() {
     body: JSON.stringify({
       questionId: current.id,
       markType: "starred",
-      enabled: starred,
-    }),
+      enabled: starred
+    })
   });
 
   await refreshStats();
@@ -420,7 +407,7 @@ async function doLogin() {
   const passcode = ($("passcode")?.value || "").trim();
   const res = await api("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ passcode }),
+    body: JSON.stringify({ passcode })
   });
 
   if (!res.ok) {
@@ -439,7 +426,6 @@ async function doLogin() {
 }
 
 async function doLogout() {
-  // 尝试通知后端删除 session（失败也无所谓）
   try {
     await api("/api/auth/logout", { method: "POST" });
   } catch {}
@@ -447,7 +433,6 @@ async function doLogout() {
   token = "";
   localStorage.removeItem("drill_token");
 
-  // 清理 UI
   $("statsPill").textContent = "—";
   if ($("passcode")) $("passcode").value = "";
   hideAnswerPanel();
@@ -456,19 +441,64 @@ async function doLogout() {
   setLoggedInUI(false);
 }
 
-// bind
+/** ✅ 新增：上传 CSV 导入 */
+async function doImportCsv() {
+  const fileInput = $("csvFile");
+  const out = $("importResult");
+  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    toast("先选择一个 CSV 文件");
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const fd = new FormData();
+  fd.append("file", file);
+
+  setHidden(out, false);
+  out.textContent = "上传中…";
+
+  const res = await api("/api/import/csv", { method: "POST", body: fd });
+
+  if (!res.ok) {
+    out.textContent = `导入失败：${res.error || "unknown"}`;
+    return;
+  }
+
+  const lines = [];
+  lines.push(`文件：${res.filename}`);
+  lines.push(`新增：${res.inserted}  跳过(重复ID)：${res.skipped}  失败：${res.failed}`);
+  if (res.errors && res.errors.length) {
+    lines.push("");
+    lines.push("错误示例（最多20条）：");
+    for (const e of res.errors) {
+      lines.push(`- 第 ${e.row} 行：${e.error}`);
+    }
+  } else {
+    lines.push("");
+    lines.push("✅ 导入成功！");
+  }
+
+  out.textContent = lines.join("\n");
+
+  // 刷新筛选下拉
+  await loadMeta();
+  await refreshStats();
+}
+
 if ($("btnLogin")) $("btnLogin").onclick = doLogin;
 if ($("btnLogout")) $("btnLogout").onclick = doLogout;
 
 if ($("btnNext")) $("btnNext").onclick = nextQuestion;
 if ($("btnSubmit")) $("btnSubmit").onclick = submitAttempt;
-if ($("btnShow")) $("btnShow").onclick = showAnswer;
+if ($("btnShow")) $("btnShow").onclick = showAnswerPanel;
 if ($("btnStar")) $("btnStar").onclick = toggleStar;
+
+if ($("btnImport")) $("btnImport").onclick = doImportCsv;
+
 if ($("mode")) $("mode").onchange = nextQuestion;
 if ($("type")) $("type").onchange = nextQuestion;
 if ($("section")) $("section").onchange = nextQuestion;
 
-// auto-login if token exists
 (async function boot() {
   if (!token) {
     setLoggedInUI(false);

@@ -3,11 +3,13 @@ dotenv.config();
 
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
+import multipart from "@fastify/multipart";
 import path from "path";
 import { fileURLToPath } from "url";
 
 import { openDb } from "./db.js";
-import { nowIso, newId, safeJsonParse, grade } from "./utils.js";
+import { nowIso, newId, safeJsonParse, grade, decodeTextSmart } from "./utils.js";
+import { importQuestionsFromCsvText } from "./import_lib.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const PASSCODE = String(process.env.APP_PASSCODE || "change-me");
@@ -20,12 +22,16 @@ const app = Fastify({ logger: true });
 const db = openDb();
 
 // 静态站点
-app.register(fastifyStatic, {
-  root: publicDir,
-  prefix: "/",
+app.register(fastifyStatic, { root: publicDir, prefix: "/" });
+
+// 上传（CSV）
+app.register(multipart, {
+  limits: {
+    fileSize: 20 * 1024 * 1024 // 20MB
+  }
 });
 
-// --- Auth: 简单口令登录，返回 session token ---
+// --- Auth ---
 app.post("/api/auth/login", async (req, reply) => {
   const { passcode } = req.body || {};
   if (String(passcode || "") !== PASSCODE) {
@@ -36,11 +42,7 @@ app.post("/api/auth/login", async (req, reply) => {
   const token = newId("s");
 
   db.prepare("INSERT INTO users (id, created_at) VALUES (?, ?)").run(userId, nowIso());
-  db.prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)").run(
-    token,
-    userId,
-    nowIso()
-  );
+  db.prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)").run(token, userId, nowIso());
 
   return { ok: true, token };
 });
@@ -62,26 +64,47 @@ function requireUser(req, reply) {
   req.sessionToken = token;
 }
 
-// 退出登录：删除 session
 app.post("/api/auth/logout", async (req, reply) => {
   requireUser(req, reply);
   db.prepare("DELETE FROM sessions WHERE token = ?").run(req.sessionToken);
   return { ok: true };
 });
 
-// --- Meta：题型/章节列表 ---
+// --- 新增：CSV 导入 ---
+app.post("/api/import/csv", async (req, reply) => {
+  requireUser(req, reply);
+
+  const part = await req.file();
+  if (!part) return reply.code(400).send({ ok: false, error: "missing file field" });
+
+  const filename = part.filename || "";
+  const mimetype = part.mimetype || "";
+  if (!filename.toLowerCase().endsWith(".csv")) {
+    return reply.code(400).send({ ok: false, error: "只支持 .csv 文件" });
+  }
+  if (mimetype && !mimetype.includes("csv") && !mimetype.includes("text")) {
+    // 有些浏览器会给 application/vnd.ms-excel，也放行
+  }
+
+  // 读入 buffer
+  const chunks = [];
+  for await (const chunk of part.file) chunks.push(chunk);
+  const buf = Buffer.concat(chunks);
+  const text = decodeTextSmart(buf);
+
+  const result = importQuestionsFromCsvText(db, text, { defaultSection: "导入题库" });
+  return { ok: true, filename, ...result };
+});
+
+// --- Meta ---
 app.get("/api/meta", async (req, reply) => {
   requireUser(req, reply);
   const types = db.prepare("SELECT type, COUNT(*) as c FROM questions GROUP BY type ORDER BY c DESC").all();
-  const sections = db
-    .prepare("SELECT section, COUNT(*) as c FROM questions GROUP BY section ORDER BY c DESC")
-    .all();
+  const sections = db.prepare("SELECT section, COUNT(*) as c FROM questions GROUP BY section ORDER BY c DESC").all();
   return { ok: true, types, sections };
 });
 
 // --- 获取下一题 ---
-// mode: random | seq | wrong | starred
-// filter: { type?, section? }
 app.get("/api/questions/next", async (req, reply) => {
   requireUser(req, reply);
   const userId = req.userId;
@@ -110,10 +133,11 @@ app.get("/api/questions/next", async (req, reply) => {
       FROM questions q
       JOIN marks m ON m.question_id = q.id
       WHERE m.user_id = ? AND m.mark_type = ? AND ${where}
+      ORDER BY RANDOM()
+      LIMIT 1
     `;
     params.unshift(markType);
     params.unshift(userId);
-    sql += " ORDER BY RANDOM() LIMIT 1";
   } else if (mode === "seq") {
     sql += " ORDER BY rowid ASC LIMIT 1";
   } else {
@@ -134,8 +158,8 @@ app.get("/api/questions/next", async (req, reply) => {
       options,
       hasAnswer: Boolean(q.answer),
       answer: q.answer || "",
-      analysis: q.analysis || "",
-    },
+      analysis: q.analysis || ""
+    }
   };
 });
 
@@ -184,7 +208,7 @@ app.post("/api/attempts", async (req, reply) => {
   return { ok: true, isCorrect };
 });
 
-// --- ⭐标记/取消标记 ---
+// --- ⭐标记/取消 ---
 app.post("/api/marks", async (req, reply) => {
   requireUser(req, reply);
   const userId = req.userId;

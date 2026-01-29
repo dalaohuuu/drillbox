@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import iconv from "iconv-lite";
 
 export function nowIso() {
   return new Date().toISOString();
@@ -16,9 +17,34 @@ export function safeJsonParse(s, fallback) {
   }
 }
 
+/**
+ * 尝试把 Buffer 解码成字符串：
+ * - 先用 utf8（并去 BOM）
+ * - 如果包含大量 �，尝试 gbk（Excel 在中文 Windows 常见）
+ */
+export function decodeTextSmart(buf) {
+  if (!buf) return "";
+  // utf8
+  let s = buf.toString("utf8");
+  s = s.replace(/^\uFEFF/, ""); // BOM
+  const bad = (s.match(/\uFFFD/g) || []).length; // replacement char �
+  if (bad >= 5) {
+    // 尝试 gbk
+    try {
+      const gbk = iconv.decode(buf, "gbk").replace(/^\uFEFF/, "");
+      // 简单择优：如果 gbk 的 � 更少，就用 gbk
+      const bad2 = (gbk.match(/\uFFFD/g) || []).length;
+      if (bad2 < bad) return gbk;
+    } catch {
+      // ignore
+    }
+  }
+  return s;
+}
+
 // 简单 CSV 解析：支持逗号分隔 + 双引号包裹（够用版）
 export function parseCsv(text) {
-  const lines = text.replace(/\r/g, "").split("\n").filter(Boolean);
+  const lines = text.replace(/\r/g, "").split("\n").filter((l) => l.trim().length > 0);
   const rows = [];
   for (const line of lines) {
     const row = [];
@@ -52,7 +78,7 @@ function normText(s) {
 }
 
 function splitBlanks(s) {
-  // 支持：； ; ， , | / 空格（多空填空题）
+  // 支持：； ; ， , | / 以及多个空格
   const raw = String(s ?? "").trim();
   if (!raw) return [];
   return raw
@@ -61,12 +87,7 @@ function splitBlanks(s) {
     .filter(Boolean);
 }
 
-// 判分：
-// - 判断题：answer = true/false 或 "对/错"
-// - 单选：answer = "A" 或 "B"
-// - 多选：answer = "A,B"（忽略顺序）
-// - 填空：支持多空，用分隔符拆分，逐空对比（顺序一致）
-// - 文字题：默认严格对比（可后续扩展）
+// 判分
 export function grade(type, userAnswer, correctAnswer) {
   const uRaw = String(userAnswer ?? "").trim();
   const cRaw = String(correctAnswer ?? "").trim();
@@ -105,7 +126,7 @@ export function grade(type, userAnswer, correctAnswer) {
     const uParts = splitBlanks(uRaw);
     const cParts = splitBlanks(cRaw);
 
-    // 单空：允许用户直接输入，不一定写分隔符
+    // 单空：忽略大小写与多空格
     if (cParts.length <= 1) {
       return normText(uRaw) === normText(cRaw);
     }
